@@ -20,7 +20,7 @@ else(LFL_ANDROID)
 endif(LFL_ANDROID)
 
 lfl_project(cb)
-add_subdirectory(../lfapp ${CMAKE_CURRENT_BINARY_DIR}/lfapp_obj)
+add_subdirectory(../core/lfapp ${CMAKE_CURRENT_BINARY_DIR}/lfapp_obj)
 add_definitions(${LFAPP_DEF})
 include_directories(${LFAPP_INCLUDE})
 
