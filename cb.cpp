@@ -16,33 +16,35 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "lfapp/lfapp.h"
-#include "lfapp/dom.h"
-#include "lfapp/css.h"
-#include "lfapp/flow.h"
-#include "lfapp/gui.h"
-#include "lfapp/network.h"
+#include "core/app/app.h"
+#include "core/web/dom.h"
+#include "core/web/css.h"
+#include "core/app/flow.h"
+#include "core/app/gui.h"
+#include "core/app/network.h"
 
 namespace LFL {
 DEFINE_FLAG(sniff_device, int, 0, "Network interface index");
 
-AssetMap asset;
-SoundAssetMap soundasset;
+struct MyAppState {
+  AssetMap asset;
+  SoundAssetMap soundasset;
+  unique_ptr<Sniffer> sniffer;
+  unique_ptr<GeoResolution> geo;
+} *my_app = new MyAppState();
 
-Scene scene;
-Sniffer *sniffer;
-GeoResolution *geo;
+struct MyWindow : public GUI {
+  Scene scene;
+  int Frame(LFL::Window *W, unsigned clicks, int flag) {
+    scene.Get("arrow")->YawRight((double)clicks/500);
+    scene.Draw(&my_app->asset.vec);
 
-// engine callback driven by LFL::Application
-int Frame(LFL::Window *W, unsigned clicks, int flag) {
-  scene.Get("arrow")->YawRight((double)clicks/500);
-  scene.Draw(&asset.vec);
-
-  // Press tick for console
-  screen->gd->DrawMode(DrawMode::_2D);
-  screen->DrawDialogs();
-  return 0;
-}
+    // Press tick for console
+    W->gd->DrawMode(DrawMode::_2D);
+    W->DrawDialogs();
+    return 0;
+  }
+};
 
 void Sniff(const char *packet, int avail, int size) {
   if (avail < Ethernet::Header::Size + IPV4::Header::MinSize) return;
@@ -51,8 +53,8 @@ void Sniff(const char *packet, int avail, int size) {
   if (iphdrlen < IPV4::Header::MinSize || avail < Ethernet::Header::Size + iphdrlen) return;
   string src_ip = IPV4::Text(ip->src), dst_ip = IPV4::Text(ip->dst), src_city, dst_city;
   float src_lat, src_lng, dst_lat, dst_lng;
-  geo->resolve(src_ip, 0, 0, &src_city, &src_lat, &src_lng);
-  geo->resolve(dst_ip, 0, 0, &dst_city, &dst_lat, &dst_lng);
+  my_app->geo->Resolve(src_ip, 0, 0, &src_city, &src_lat, &src_lng);
+  my_app->geo->Resolve(dst_ip, 0, 0, &dst_city, &dst_lat, &dst_lng);
 
   if (ip->prot == 6 && avail >= Ethernet::Header::Size + iphdrlen + TCP::Header::MinSize) {
     TCP::Header *tcp = (TCP::Header*)((char*)ip + iphdrlen);
@@ -65,63 +67,73 @@ void Sniff(const char *packet, int avail, int size) {
   else INFO("ip ver=", ip->version(), " prot=", ip->prot, " ", src_ip, " -> ", dst_ip);
 }
 
+void MyWindowInit(Window *W) {
+  W->width = 420;
+  W->height = 380;
+  W->caption = "CrystalBawl";
+}
+
+void MyWindowStart(Window *W) {
+  CHECK_EQ(0, W->NewGUI());
+  MyWindow *gui = W->ReplaceGUI(0, make_unique<MyWindow>());
+  W->frame_cb = bind(&MyWindow::Frame, gui, _1, _2, _3);
+  W->shell = make_unique<Shell>(&my_app->asset, &my_app->soundasset, nullptr);
+  BindMap *binds = W->AddInputController(make_unique<BindMap>());
+  binds->Add(Key::Backquote, Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
+  binds->Add(Key::Quote,     Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
+  binds->Add(Key::Escape,    Bind::CB(bind(&Shell::quit,            W->shell.get(), vector<string>())));
+  binds->Add(Key::Return,    Bind::CB(bind(&Shell::grabmode,        W->shell.get(), vector<string>())));
+  binds->Add(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   W->cam.get(), _1)));
+  binds->Add(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  W->cam.get(), _1)));
+  binds->Add('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    W->cam.get(), _1)));
+  binds->Add('s',            Bind::TimeCB(bind(&Entity::MoveRev,    W->cam.get(), _1)));
+  binds->Add('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   W->cam.get(), _1)));
+  binds->Add('d',            Bind::TimeCB(bind(&Entity::MoveRight,  W->cam.get(), _1)));
+  binds->Add('q',            Bind::TimeCB(bind(&Entity::MoveDown,   W->cam.get(), _1)));
+  binds->Add('e',            Bind::TimeCB(bind(&Entity::MoveUp,     W->cam.get(), _1)));
+}
+
 }; // namespace LFL
 using namespace LFL;
 
-extern "C" int main(int argc, const char *argv[]) {
-  screen->frame_cb = Frame;
-  app->logfilename = StrCat(LFAppDownloadDir(), "cb.txt");
-  screen->width = 420;
-  screen->height = 380;
-  screen->caption = "CrystalBawl";
+extern "C" void MyAppInit() {
   FLAGS_lfapp_video = FLAGS_lfapp_input = FLAGS_lfapp_network = 1;
   FLAGS_target_fps = 50;
   FLAGS_threadpool_size = 1;
+  app->logfilename = StrCat(LFAppDownloadDir(), "cb.txt");
+  app->window_start_cb = MyWindowStart;
+  app->window_init_cb = MyWindowInit;
+  app->window_init_cb(screen);
+  app->exit_cb = []{ delete my_app; };
+}
 
-  if (app->Create(argc, argv, __FILE__)) { app->Free(); return -1; }
-  if (app->Init()) { app->Free(); return -1; }
+extern "C" int MyAppMain(int argc, const char* const* argv) {
+  if (app->Create(argc, argv, __FILE__)) return -1;
+  if (app->Init()) return -1;
 
-  // for dynamic ::load(Asset *); 
-  // asset.Add(Asset(name, texture,     scale, translate, rotate, geometry,       0, 0, 0));
-  asset.Add(Asset("axis",  "",          0,     0,         0,      0,              0, 0, 0, Asset::DrawCB(bind(&glAxis, _1, _2))));
-  asset.Add(Asset("grid",  "",          0,     0,         0,      Grid::Grid3D(), 0, 0, 0));
-  asset.Add(Asset("room",  "",          0,     0,         0,      0,              0, 0, 0, Asset::DrawCB(bind(&glRoom, _1, _2))));
-  asset.Add(Asset("arrow", "",         .005,   1,        -90,     "arrow.obj",    0, 0));
-  asset.Load();
-  app->shell.assets = &asset;
+  // my_app->asset.Add(name, texture,     scale, translate, rotate, geometry,                 nullptr, 0, 0);
+  my_app->asset.Add("axis",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glAxis, _1, _2)));
+  my_app->asset.Add("grid",  "",          0,     0,         0,      Grid::Grid3D().release(), nullptr, 0, 0);
+  my_app->asset.Add("room",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glRoom, _1, _2)));
+  my_app->asset.Add("arrow", "",         .005,   1,        -90,     "arrow.obj",              nullptr, 0);
+  my_app->asset.Load();
 
-  // for dynamic ::load(SoundAsset *);
-  // soundassets.push_back(SoundAsset(name, filename,   ringbuf, channels, sample_rate, seconds));
-  soundasset.Add(SoundAsset("draw",  "Draw.wav", 0,       0,        0,           0      ));
-  soundasset.Load();
-  app->shell.soundassets = &soundasset;
+  // my_app->soundassets.push_back(SoundAsset(name, filename,   ringbuf, channels, sample_rate, seconds));
+  my_app->soundasset.Add(SoundAsset("draw",  "Draw.wav", 0,       0,        0,           0      ));
+  my_app->soundasset.Load();
 
-  BindMap *binds = screen->binds = new BindMap();
-  //  binds->Add(Bind(key,            callback));
-  binds->Add(Bind(Key::Backquote, Bind::CB(bind(&Shell::console,         &app->shell, vector<string>()))));
-  binds->Add(Bind(Key::Quote,     Bind::CB(bind(&Shell::console,         &app->shell, vector<string>()))));
-  binds->Add(Bind(Key::Escape,    Bind::CB(bind(&Shell::quit,            &app->shell, vector<string>()))));
-  binds->Add(Bind(Key::Return,    Bind::CB(bind(&Shell::grabmode,        &app->shell, vector<string>()))));
-  binds->Add(Bind(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   screen->cam, _1))));
-  binds->Add(Bind(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  screen->cam, _1))));
-  binds->Add(Bind('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    screen->cam, _1))));
-  binds->Add(Bind('s',            Bind::TimeCB(bind(&Entity::MoveRev,    screen->cam, _1))));
-  binds->Add(Bind('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   screen->cam, _1))));
-  binds->Add(Bind('d',            Bind::TimeCB(bind(&Entity::MoveRight,  screen->cam, _1))));
-  binds->Add(Bind('q',            Bind::TimeCB(bind(&Entity::MoveDown,   screen->cam, _1))));
-  binds->Add(Bind('e',            Bind::TimeCB(bind(&Entity::MoveUp,     screen->cam, _1))));
-
-  scene.Add(new Entity("axis",  asset("axis")));
-  scene.Add(new Entity("grid",  asset("grid")));
-  scene.Add(new Entity("room",  asset("room")));
-  scene.Add(new Entity("arrow", asset("arrow"), v3(1, .24, 1)));
+  app->StartNewWindow(screen);
+  MyWindow *gui = screen->GetOwnGUI<MyWindow>(0);
+  gui->scene.Add(new Entity("axis",  my_app->asset("axis")));
+  gui->scene.Add(new Entity("grid",  my_app->asset("grid")));
+  gui->scene.Add(new Entity("room",  my_app->asset("room")));
+  gui->scene.Add(new Entity("arrow", my_app->asset("arrow"), v3(1, .24, 1)));
 
   vector<string> devices;
   Sniffer::PrintDevices(&devices);
   if (FLAGS_sniff_device < 0 || FLAGS_sniff_device >= devices.size()) FATAL(FLAGS_sniff_device, " oob ", devices.size(), ", are you running as root?");
-  if (!(sniffer = Sniffer::Open(devices[FLAGS_sniff_device], "", 1024, Sniff))) FATAL("sniffer Open failed");
-  if (!(geo = GeoResolution::Open(StrCat(app->assetdir, "GeoLiteCity.dat").c_str()))) FATAL("geo Open failed");
+  if (!(my_app->sniffer = Sniffer::Open(devices[FLAGS_sniff_device], "", 1024, Sniff))) FATAL("sniffer Open failed");
+  if (!(my_app->geo = GeoResolution::Open(StrCat(app->assetdir, "GeoLiteCity.dat").c_str()))) FATAL("geo Open failed");
 
-  // start our engine
   return app->Main();
 }
