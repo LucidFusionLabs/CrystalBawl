@@ -96,11 +96,12 @@ void MyWindowStart(Window *W) {
 }; // namespace LFL
 using namespace LFL;
 
-extern "C" void MyAppInit() {
+extern "C" void MyAppCreate() {
   FLAGS_lfapp_video = FLAGS_lfapp_input = FLAGS_lfapp_network = 1;
   FLAGS_target_fps = 50;
   FLAGS_threadpool_size = 1;
-  app->logfilename = StrCat(LFAppDownloadDir(), "cb.txt");
+  app = new Application();
+  screen = new Window();
   app->window_start_cb = MyWindowStart;
   app->window_init_cb = MyWindowInit;
   app->window_init_cb(screen);
