@@ -27,17 +27,17 @@ namespace LFL {
 DEFINE_FLAG(sniff_device, int, 0, "Network interface index");
 
 struct MyAppState {
-  AssetMap asset;
-  SoundAssetMap soundasset;
   unique_ptr<Sniffer> sniffer;
   unique_ptr<GeoResolution> geo;
 } *my_app = new MyAppState();
 
-struct MyWindow : public GUI {
+struct MyGUI : public GUI {
   Scene scene;
+  MyGUI(Window *W) : GUI(W) {}
+
   int Frame(LFL::Window *W, unsigned clicks, int flag) {
     scene.Get("arrow")->YawRight((double)clicks/500);
-    scene.Draw(&my_app->asset.vec);
+    scene.Draw(W->gd, &app->asset.vec);
 
     // Press tick for console
     W->gd->DrawMode(DrawMode::_2D);
@@ -75,32 +75,32 @@ void MyWindowInit(Window *W) {
 
 void MyWindowStart(Window *W) {
   CHECK_EQ(0, W->NewGUI());
-  MyWindow *gui = W->ReplaceGUI(0, make_unique<MyWindow>());
-  W->frame_cb = bind(&MyWindow::Frame, gui, _1, _2, _3);
-  W->shell = make_unique<Shell>(&my_app->asset, &my_app->soundasset, nullptr);
+  MyGUI *gui = W->ReplaceGUI(0, make_unique<MyGUI>(W));
+  W->frame_cb = bind(&MyGUI::Frame, gui, _1, _2, _3);
+  W->shell = make_unique<Shell>();
   BindMap *binds = W->AddInputController(make_unique<BindMap>());
   binds->Add(Key::Backquote, Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
   binds->Add(Key::Quote,     Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
   binds->Add(Key::Escape,    Bind::CB(bind(&Shell::quit,            W->shell.get(), vector<string>())));
   binds->Add(Key::Return,    Bind::CB(bind(&Shell::grabmode,        W->shell.get(), vector<string>())));
-  binds->Add(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   W->cam.get(), _1)));
-  binds->Add(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  W->cam.get(), _1)));
-  binds->Add('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    W->cam.get(), _1)));
-  binds->Add('s',            Bind::TimeCB(bind(&Entity::MoveRev,    W->cam.get(), _1)));
-  binds->Add('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   W->cam.get(), _1)));
-  binds->Add('d',            Bind::TimeCB(bind(&Entity::MoveRight,  W->cam.get(), _1)));
-  binds->Add('q',            Bind::TimeCB(bind(&Entity::MoveDown,   W->cam.get(), _1)));
-  binds->Add('e',            Bind::TimeCB(bind(&Entity::MoveUp,     W->cam.get(), _1)));
+  binds->Add(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   &gui->scene.cam, _1)));
+  binds->Add(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  &gui->scene.cam, _1)));
+  binds->Add('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    &gui->scene.cam, _1)));
+  binds->Add('s',            Bind::TimeCB(bind(&Entity::MoveRev,    &gui->scene.cam, _1)));
+  binds->Add('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   &gui->scene.cam, _1)));
+  binds->Add('d',            Bind::TimeCB(bind(&Entity::MoveRight,  &gui->scene.cam, _1)));
+  binds->Add('q',            Bind::TimeCB(bind(&Entity::MoveDown,   &gui->scene.cam, _1)));
+  binds->Add('e',            Bind::TimeCB(bind(&Entity::MoveUp,     &gui->scene.cam, _1)));
 }
 
 }; // namespace LFL
 using namespace LFL;
 
-extern "C" void MyAppCreate() {
-  FLAGS_lfapp_video = FLAGS_lfapp_input = FLAGS_lfapp_network = 1;
+extern "C" void MyAppCreate(int argc, const char* const* argv) {
+  FLAGS_enable_video = FLAGS_enable_input = FLAGS_enable_network = 1;
   FLAGS_target_fps = 50;
   FLAGS_threadpool_size = 1;
-  app = new Application();
+  app = new Application(argc, argv);
   screen = new Window();
   app->window_start_cb = MyWindowStart;
   app->window_init_cb = MyWindowInit;
@@ -108,27 +108,27 @@ extern "C" void MyAppCreate() {
   app->exit_cb = []{ delete my_app; };
 }
 
-extern "C" int MyAppMain(int argc, const char* const* argv) {
-  if (app->Create(argc, argv, __FILE__)) return -1;
+extern "C" int MyAppMain() {
+  if (app->Create(__FILE__)) return -1;
   if (app->Init()) return -1;
 
-  // my_app->asset.Add(name, texture,     scale, translate, rotate, geometry,                 nullptr, 0, 0);
-  my_app->asset.Add("axis",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glAxis, _1, _2)));
-  my_app->asset.Add("grid",  "",          0,     0,         0,      Grid::Grid3D().release(), nullptr, 0, 0);
-  my_app->asset.Add("room",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glRoom, _1, _2)));
-  my_app->asset.Add("arrow", "",         .005,   1,        -90,     "arrow.obj",              nullptr, 0);
-  my_app->asset.Load();
+  // app->asset.Add(name, texture,     scale, translate, rotate, geometry,                 nullptr, 0, 0);
+  app->asset.Add("axis",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glAxis, _1, _2, _3)));
+  app->asset.Add("grid",  "",          0,     0,         0,      Grid::Grid3D().release(), nullptr, 0, 0);
+  app->asset.Add("room",  "",          0,     0,         0,      nullptr,                  nullptr, 0, 0, Asset::DrawCB(bind(&glRoom, _1, _2, _3)));
+  app->asset.Add("arrow", "",         .005,   1,        -90,     "arrow.obj",              nullptr, 0);
+  app->asset.Load();
 
-  // my_app->soundassets.push_back(SoundAsset(name, filename,   ringbuf, channels, sample_rate, seconds));
-  my_app->soundasset.Add(SoundAsset("draw",  "Draw.wav", 0,       0,        0,           0      ));
-  my_app->soundasset.Load();
+  // app->soundassets.push_back(SoundAsset(name, filename,   ringbuf, channels, sample_rate, seconds));
+  app->soundasset.Add(SoundAsset("draw",  "Draw.wav", 0,       0,        0,           0      ));
+  app->soundasset.Load();
 
   app->StartNewWindow(screen);
-  MyWindow *gui = screen->GetOwnGUI<MyWindow>(0);
-  gui->scene.Add(new Entity("axis",  my_app->asset("axis")));
-  gui->scene.Add(new Entity("grid",  my_app->asset("grid")));
-  gui->scene.Add(new Entity("room",  my_app->asset("room")));
-  gui->scene.Add(new Entity("arrow", my_app->asset("arrow"), v3(1, .24, 1)));
+  MyGUI *gui = screen->GetOwnGUI<MyGUI>(0);
+  gui->scene.Add(new Entity("axis",  app->asset("axis")));
+  gui->scene.Add(new Entity("grid",  app->asset("grid")));
+  gui->scene.Add(new Entity("room",  app->asset("room")));
+  gui->scene.Add(new Entity("arrow", app->asset("arrow"), v3(1, .24, 1)));
 
   vector<string> devices;
   Sniffer::PrintDevices(&devices);
