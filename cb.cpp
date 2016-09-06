@@ -77,7 +77,7 @@ void MyWindowStart(Window *W) {
   CHECK_EQ(0, W->NewGUI());
   MyGUI *gui = W->ReplaceGUI(0, make_unique<MyGUI>(W));
   W->frame_cb = bind(&MyGUI::Frame, gui, _1, _2, _3);
-  W->shell = make_unique<Shell>();
+  W->shell = make_unique<Shell>(W);
   BindMap *binds = W->AddInputController(make_unique<BindMap>());
   binds->Add(Key::Backquote, Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
   binds->Add(Key::Quote,     Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
@@ -101,10 +101,10 @@ extern "C" void MyAppCreate(int argc, const char* const* argv) {
   FLAGS_target_fps = 50;
   FLAGS_threadpool_size = 1;
   app = new Application(argc, argv);
-  screen = new Window();
+  app->focused = new Window();
   app->window_start_cb = MyWindowStart;
   app->window_init_cb = MyWindowInit;
-  app->window_init_cb(screen);
+  app->window_init_cb(app->focused);
   app->exit_cb = []{ delete my_app; };
 }
 
@@ -123,8 +123,8 @@ extern "C" int MyAppMain() {
   app->soundasset.Add(SoundAsset("draw",  "Draw.wav", 0,       0,        0,           0      ));
   app->soundasset.Load();
 
-  app->StartNewWindow(screen);
-  MyGUI *gui = screen->GetOwnGUI<MyGUI>(0);
+  app->StartNewWindow(app->focused);
+  MyGUI *gui = app->focused->GetOwnGUI<MyGUI>(0);
   gui->scene.Add(new Entity("axis",  app->asset("axis")));
   gui->scene.Add(new Entity("grid",  app->asset("grid")));
   gui->scene.Add(new Entity("room",  app->asset("room")));
