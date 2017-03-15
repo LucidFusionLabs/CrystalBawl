@@ -101,7 +101,7 @@ extern "C" void MyAppCreate(int argc, const char* const* argv) {
   FLAGS_target_fps = 50;
   FLAGS_threadpool_size = 1;
   app = new Application(argc, argv);
-  app->focused = new Window();
+  app->focused = Window::Create();
   app->window_start_cb = MyWindowStart;
   app->window_init_cb = MyWindowInit;
   app->window_init_cb(app->focused);
