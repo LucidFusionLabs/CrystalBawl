@@ -31,9 +31,9 @@ struct MyAppState {
   unique_ptr<GeoResolution> geo;
 } *my_app = new MyAppState();
 
-struct MyGUI : public GUI {
+struct MyView : public View {
   Scene scene;
-  MyGUI(Window *W) : GUI(W) {}
+  MyView(Window *W) : View(W) {}
 
   int Frame(LFL::Window *W, unsigned clicks, int flag) {
     scene.Get("arrow")->YawRight((double)clicks/500);
@@ -74,23 +74,23 @@ void MyWindowInit(Window *W) {
 }
 
 void MyWindowStart(Window *W) {
-  CHECK_EQ(0, W->NewGUI());
-  MyGUI *gui = W->ReplaceGUI(0, make_unique<MyGUI>(W));
-  W->frame_cb = bind(&MyGUI::Frame, gui, _1, _2, _3);
+  CHECK_EQ(0, W->NewView());
+  MyView *view = W->ReplaceView(0, make_unique<MyView>(W));
+  W->frame_cb = bind(&MyView::Frame, view, _1, _2, _3);
   W->shell = make_unique<Shell>(W);
   BindMap *binds = W->AddInputController(make_unique<BindMap>());
   binds->Add(Key::Backquote, Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
   binds->Add(Key::Quote,     Bind::CB(bind(&Shell::console,         W->shell.get(), vector<string>())));
   binds->Add(Key::Escape,    Bind::CB(bind(&Shell::quit,            W->shell.get(), vector<string>())));
   binds->Add(Key::Return,    Bind::CB(bind(&Shell::grabmode,        W->shell.get(), vector<string>())));
-  binds->Add(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   &gui->scene.cam, _1)));
-  binds->Add(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  &gui->scene.cam, _1)));
-  binds->Add('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    &gui->scene.cam, _1)));
-  binds->Add('s',            Bind::TimeCB(bind(&Entity::MoveRev,    &gui->scene.cam, _1)));
-  binds->Add('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   &gui->scene.cam, _1)));
-  binds->Add('d',            Bind::TimeCB(bind(&Entity::MoveRight,  &gui->scene.cam, _1)));
-  binds->Add('q',            Bind::TimeCB(bind(&Entity::MoveDown,   &gui->scene.cam, _1)));
-  binds->Add('e',            Bind::TimeCB(bind(&Entity::MoveUp,     &gui->scene.cam, _1)));
+  binds->Add(Key::LeftShift, Bind::TimeCB(bind(&Entity::RollLeft,   &view->scene.cam, _1)));
+  binds->Add(Key::Space,     Bind::TimeCB(bind(&Entity::RollRight,  &view->scene.cam, _1)));
+  binds->Add('w',            Bind::TimeCB(bind(&Entity::MoveFwd,    &view->scene.cam, _1)));
+  binds->Add('s',            Bind::TimeCB(bind(&Entity::MoveRev,    &view->scene.cam, _1)));
+  binds->Add('a',            Bind::TimeCB(bind(&Entity::MoveLeft,   &view->scene.cam, _1)));
+  binds->Add('d',            Bind::TimeCB(bind(&Entity::MoveRight,  &view->scene.cam, _1)));
+  binds->Add('q',            Bind::TimeCB(bind(&Entity::MoveDown,   &view->scene.cam, _1)));
+  binds->Add('e',            Bind::TimeCB(bind(&Entity::MoveUp,     &view->scene.cam, _1)));
 }
 
 }; // namespace LFL
@@ -124,11 +124,11 @@ extern "C" int MyAppMain() {
   app->soundasset.Load();
 
   app->StartNewWindow(app->focused);
-  MyGUI *gui = app->focused->GetOwnGUI<MyGUI>(0);
-  gui->scene.Add(new Entity("axis",  app->asset("axis")));
-  gui->scene.Add(new Entity("grid",  app->asset("grid")));
-  gui->scene.Add(new Entity("room",  app->asset("room")));
-  gui->scene.Add(new Entity("arrow", app->asset("arrow"), v3(1, .24, 1)));
+  MyView *view = app->focused->GetOwnView<MyView>(0);
+  view->scene.Add(new Entity("axis",  app->asset("axis")));
+  view->scene.Add(new Entity("grid",  app->asset("grid")));
+  view->scene.Add(new Entity("room",  app->asset("room")));
+  view->scene.Add(new Entity("arrow", app->asset("arrow"), v3(1, .24, 1)));
 
   vector<string> devices;
   Sniffer::PrintDevices(&devices);
