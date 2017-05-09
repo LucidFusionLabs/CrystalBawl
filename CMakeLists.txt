@@ -5,6 +5,8 @@ if(LFL_MOBILE)
 endif()
 
 lfl_project(CrystalBawl)
+add_subdirectory(imports)
+
 lfl_add_package(CrystalBawl SOURCES cb.cpp
                 LINK_LIBRARIES ${LFL_APP_LIB} ${LFL_APP_FRAMEWORK} ${LFL_APP_GRAPHICS}
                 ${LFL_APP_AUDIO} app_null_camera app_null_matrix app_null_fft

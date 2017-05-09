@@ -1,0 +1,3 @@
+[submodule "imports/geoip-api-c"]
+	path = imports/geoip-api-c
+	url = https://github.com/maxmind/geoip-api-c
