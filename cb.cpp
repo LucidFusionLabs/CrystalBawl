@@ -20,7 +20,7 @@
 #include "core/web/dom.h"
 #include "core/web/css.h"
 #include "core/app/flow.h"
-#include "core/app/gui.h"
+#include "core/app/gl/view.h"
 #include "core/app/network.h"
 
 namespace LFL {
